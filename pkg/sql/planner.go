@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/config"
 	"github.com/cockroachdb/cockroach/pkg/internal/client"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
@@ -220,9 +219,11 @@ func newInternalPlanner(
 			Location: time.UTC,
 		},
 	}
+	// The table collection used by the internal planner does not rely on the
+	// databaseCache and there are no subscribers to the databaseCache, so we can
+	// leave it uninitialized.
 	tables := &TableCollection{
-		leaseMgr:      execCfg.LeaseManager,
-		databaseCache: newDatabaseCache(config.NewSystemConfig()),
+		leaseMgr: execCfg.LeaseManager,
 	}
 	dataMutator := &sessionDataMutator{
 		data: sd,
@@ -275,6 +276,7 @@ func newInternalPlanner(
 	p.extendedEvalCtx.MemMetrics = memMetrics
 	p.extendedEvalCtx.ExecCfg = execCfg
 	p.extendedEvalCtx.Placeholders = &p.semaCtx.Placeholders
+	p.extendedEvalCtx.Annotations = &p.semaCtx.Annotations
 	p.extendedEvalCtx.Tables = tables
 
 	p.queryCacheSession.Init()
@@ -401,7 +403,7 @@ func (p *planner) ParseQualifiedTableName(
 
 // ResolveTableName implements the tree.EvalDatabase interface.
 func (p *planner) ResolveTableName(ctx context.Context, tn *tree.TableName) error {
-	_, err := ResolveExistingObject(ctx, p, tn, true /*required*/, anyDescType)
+	_, err := ResolveExistingObject(ctx, p, tn, true /*required*/, ResolveAnyDescType)
 	return err
 }
 

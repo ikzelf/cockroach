@@ -104,7 +104,7 @@ type createTableRun struct {
 }
 
 func (n *createTableNode) startExec(params runParams) error {
-	tKey := tableKey{parentID: n.dbDesc.ID, name: n.n.Table.Table()}
+	tKey := sqlbase.NewTableKey(n.dbDesc.ID, n.n.Table.Table())
 	key := tKey.Key()
 	if exists, err := descExists(params.ctx, params.p.txn, key); err == nil && exists {
 		if n.n.IfNotExists {
@@ -439,7 +439,7 @@ func ResolveFK(
 		}
 	}
 
-	target, err := ResolveMutableExistingObject(ctx, sc, &d.Table, true /*required*/, requireTableDesc)
+	target, err := ResolveMutableExistingObject(ctx, sc, &d.Table, true /*required*/, ResolveRequireTableDesc)
 	if err != nil {
 		return err
 	}
@@ -722,7 +722,7 @@ func addInterleave(
 	}
 
 	parentTable, err := ResolveExistingObject(
-		ctx, vt, &interleave.Parent, true /*required*/, requireTableDesc,
+		ctx, vt, &interleave.Parent, true /*required*/, ResolveRequireTableDesc,
 	)
 	if err != nil {
 		return err

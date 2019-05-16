@@ -159,7 +159,7 @@ func (n *createStatsNode) makeJobRecord(ctx context.Context) (*jobs.Record, erro
 		// TODO(anyone): if CREATE STATISTICS is meant to be able to operate
 		// within a transaction, then the following should probably run with
 		// caching disabled, like other DDL statements.
-		tableDesc, err = ResolveExistingObject(ctx, n.p, t, true /*required*/, requireTableDesc)
+		tableDesc, err = ResolveExistingObject(ctx, n.p, t, true /*required*/, ResolveRequireTableDesc)
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +229,7 @@ func (n *createStatsNode) makeJobRecord(ctx context.Context) (*jobs.Record, erro
 	}
 
 	// Create a job to run statistics creation.
-	statement := tree.AsStringWithFlags(n, tree.FmtAlwaysQualifyTableNames)
+	statement := tree.AsStringWithFQNames(n, n.p.EvalContext().Annotations)
 	var description string
 	if n.Name == stats.AutoStatsName {
 		// Use a user-friendly description for automatic statistics.

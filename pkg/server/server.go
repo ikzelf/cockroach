@@ -266,6 +266,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		s.stopper,
 		s.registry,
 		s.cfg.Locality,
+		&s.cfg.DefaultZoneConfig,
 	)
 	s.nodeDialer = nodedialer.New(s.rpcContext, gossip.AddressResolver(s.gossip))
 
@@ -352,19 +353,6 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	s.internalMemMetrics = sql.MakeMemMetrics("internal", cfg.HistogramWindowInterval())
 	s.registry.AddMetricStruct(s.internalMemMetrics)
 
-	// Set up Lease Manager
-	var lmKnobs sql.LeaseManagerTestingKnobs
-	if leaseManagerTestingKnobs := cfg.TestingKnobs.SQLLeaseManager; leaseManagerTestingKnobs != nil {
-		lmKnobs = *leaseManagerTestingKnobs.(*sql.LeaseManagerTestingKnobs)
-	}
-	s.leaseMgr = sql.NewLeaseManager(
-		s.cfg.AmbientCtx,
-		nil, /* execCfg - will be set later because of circular dependencies */
-		lmKnobs,
-		s.stopper,
-		s.cfg.LeaseManagerConfig,
-	)
-
 	// We do not set memory monitors or a noteworthy limit because the children of
 	// this monitor will be setting their own noteworthy limits.
 	rootSQLMemoryMonitor := mon.MakeMonitor(
@@ -430,6 +418,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	// TODO(bdarnell): make StoreConfig configurable.
 	storeCfg := storage.StoreConfig{
+		DefaultZoneConfig:       &s.cfg.DefaultZoneConfig,
 		Settings:                st,
 		AmbientCtx:              s.cfg.AmbientCtx,
 		RaftConfig:              s.cfg.RaftConfig,
@@ -511,6 +500,23 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	distSQLMetrics := distsqlrun.MakeDistSQLMetrics(cfg.HistogramWindowInterval())
 	s.registry.AddMetricStruct(distSQLMetrics)
+
+	// Set up Lease Manager
+	var lmKnobs sql.LeaseManagerTestingKnobs
+	if leaseManagerTestingKnobs := cfg.TestingKnobs.SQLLeaseManager; leaseManagerTestingKnobs != nil {
+		lmKnobs = *leaseManagerTestingKnobs.(*sql.LeaseManagerTestingKnobs)
+	}
+	s.leaseMgr = sql.NewLeaseManager(
+		s.cfg.AmbientCtx,
+		&s.nodeIDContainer,
+		s.db,
+		s.clock,
+		nil, /* internalExecutor - will be set later because of circular dependencies */
+		st,
+		lmKnobs,
+		s.stopper,
+		s.cfg.LeaseManagerConfig,
+	)
 
 	// Set up the DistSQL server.
 	distSQLCfg := distsqlrun.ServerConfig{
@@ -603,6 +609,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	execCfg = sql.ExecutorConfig{
 		Settings:                s.st,
 		NodeInfo:                nodeInfo,
+		DefaultZoneConfig:       &s.cfg.DefaultZoneConfig,
 		Locality:                s.cfg.Locality,
 		AmbientCtx:              s.cfg.AmbientCtx,
 		DB:                      s.db,
@@ -721,11 +728,12 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	s.execCfg = &execCfg
 
-	s.leaseMgr.SetExecCfg(&execCfg)
+	s.leaseMgr.SetInternalExecutor(execCfg.InternalExecutor)
 	s.leaseMgr.RefreshLeases(s.stopper, s.db, s.gossip)
 	s.leaseMgr.PeriodicallyRefreshSomeLeases()
 
 	s.node.InitLogger(&execCfg)
+	s.cfg.DefaultZoneConfig = cfg.DefaultZoneConfig
 
 	return s, nil
 }
@@ -1769,7 +1777,7 @@ func (s *Server) bootstrapCluster(ctx context.Context) error {
 		}
 	}
 
-	if err := s.node.bootstrapCluster(ctx, s.engines, bootstrapVersion); err != nil {
+	if err := s.node.bootstrapCluster(ctx, s.engines, bootstrapVersion, &s.cfg.DefaultZoneConfig, &s.cfg.DefaultSystemZoneConfig); err != nil {
 		return err
 	}
 	// Force all the system ranges through the replication queue so they

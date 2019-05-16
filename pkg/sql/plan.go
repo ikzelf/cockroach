@@ -98,6 +98,11 @@ func (r *runParams) ExecCfg() *ExecutorConfig {
 	return r.extendedEvalCtx.ExecCfg
 }
 
+// Ann is a shortcut for the Annotations from the eval context.
+func (r *runParams) Ann() *tree.Annotations {
+	return r.extendedEvalCtx.EvalContext.Annotations
+}
+
 // planNode defines the interface for executing a query or portion of a query.
 //
 // The following methods apply to planNodes and contain special cases
@@ -165,6 +170,7 @@ type planNodeFastPath interface {
 var _ planNode = &alterIndexNode{}
 var _ planNode = &alterSequenceNode{}
 var _ planNode = &alterTableNode{}
+var _ planNode = &bufferNode{}
 var _ planNode = &cancelQueriesNode{}
 var _ planNode = &cancelSessionsNode{}
 var _ planNode = &createDatabaseNode{}
@@ -204,6 +210,7 @@ var _ planNode = &renameIndexNode{}
 var _ planNode = &renameTableNode{}
 var _ planNode = &renderNode{}
 var _ planNode = &rowCountNode{}
+var _ planNode = &scanBufferNode{}
 var _ planNode = &scanNode{}
 var _ planNode = &scatterNode{}
 var _ planNode = &serializeNode{}

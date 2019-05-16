@@ -40,11 +40,11 @@ type renameTableNode struct {
 func (p *planner) RenameTable(ctx context.Context, n *tree.RenameTable) (planNode, error) {
 	oldTn := &n.Name
 	newTn := &n.NewName
-	toRequire := requireTableOrViewDesc
+	toRequire := ResolveRequireTableOrViewDesc
 	if n.IsView {
-		toRequire = requireViewDesc
+		toRequire = ResolveRequireViewDesc
 	} else if n.IsSequence {
-		toRequire = requireSequenceDesc
+		toRequire = ResolveRequireSequenceDesc
 	}
 
 	tableDesc, err := p.ResolveMutableTableDescriptor(ctx, oldTn, !n.IfExists, toRequire)
@@ -111,7 +111,7 @@ func (n *renameTableNode) startExec(params runParams) error {
 	tableDesc.ParentID = targetDbDesc.ID
 
 	descKey := sqlbase.MakeDescMetadataKey(tableDesc.GetID())
-	newTbKey := tableKey{targetDbDesc.ID, newTn.Table()}.Key()
+	newTbKey := sqlbase.NewTableKey(targetDbDesc.ID, newTn.Table()).Key()
 
 	if err := tableDesc.Validate(ctx, p.txn, p.EvalContext().Settings); err != nil {
 		return err

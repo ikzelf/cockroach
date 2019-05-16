@@ -17,6 +17,7 @@ package sql
 import (
 	"context"
 
+	"github.com/cockroachdb/cockroach/pkg/config"
 	"github.com/cockroachdb/cockroach/pkg/internal/client"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -65,7 +66,7 @@ func (t *truncateNode) startExec(params runParams) error {
 	for i := range n.Tables {
 		tn := &n.Tables[i]
 		tableDesc, err := p.ResolveMutableTableDescriptor(
-			ctx, tn, true /*required*/, requireTableDesc)
+			ctx, tn, true /*required*/, ResolveRequireTableDesc)
 		if err != nil {
 			return err
 		}
@@ -88,7 +89,7 @@ func (t *truncateNode) startExec(params runParams) error {
 		ctx,
 		stmtTableDescs,
 		droppedTableDetails,
-		tree.AsStringWithFlags(n, tree.FmtAlwaysQualifyTableNames),
+		tree.AsStringWithFQNames(n, params.Ann()),
 		false, /* drainNames */
 		sqlbase.InvalidID /* droppedDatabaseID */)
 	if err != nil {
@@ -210,7 +211,8 @@ func (p *planner) truncateTable(
 	// structured.proto
 	//
 	// TODO(vivek): Fix properly along with #12123.
-	zoneKey, nameKey, _ := GetKeysForTableDescriptor(tableDesc.TableDesc())
+	zoneKey := config.MakeZoneKey(uint32(tableDesc.ID))
+	nameKey := sqlbase.MakeNameMetadataKey(tableDesc.ParentID, tableDesc.GetName())
 	b := &client.Batch{}
 	// Use CPut because we want to remove a specific name -> id map.
 	if traceKV {
@@ -267,8 +269,7 @@ func (p *planner) truncateTable(
 	newTableDesc.Mutations = nil
 	newTableDesc.GCMutations = nil
 	newTableDesc.ModificationTime = p.txn.CommitTimestamp()
-	tKey := tableKey{parentID: newTableDesc.ParentID, name: newTableDesc.Name}
-	key := tKey.Key()
+	key := sqlbase.NewTableKey(newTableDesc.ParentID, newTableDesc.Name).Key()
 	if err := p.createDescriptorWithID(
 		ctx, key, newID, newTableDesc, p.ExtendedEvalContext().Settings); err != nil {
 		return err

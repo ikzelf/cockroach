@@ -42,6 +42,7 @@ func registerTests(r *registry) {
 	registerHotSpotSplits(r)
 	registerImportTPCC(r)
 	registerImportTPCH(r)
+	registerIndexes(r)
 	registerInterleaved(r)
 	registerJepsen(r)
 	registerKV(r)
@@ -51,6 +52,7 @@ func registerTests(r *registry) {
 	registerKVScalability(r)
 	registerKVSplits(r)
 	registerLargeRange(r)
+	registerLedger(r)
 	registerNetwork(r)
 	registerPsycopg(r)
 	registerQueue(r)
@@ -75,7 +77,7 @@ func registerTests(r *registry) {
 	registerUpgrade(r)
 	registerVersion(r)
 	registerYCSB(r)
-	registerSQL20Bench(r)
+	registerTPCHBench(r)
 }
 
 func registerBenchmarks(r *registry) {
@@ -83,6 +85,7 @@ func registerBenchmarks(r *registry) {
 	//
 	// grep -h -E 'func register[^(]+\(.*registry\) {' *.go | grep -E -o 'register[^(]+' | grep -v '^registerTests$' | grep '^\w*Bench$' | sort | awk '{printf "\t%s(r)\n", $0}'
 
+	registerIndexesBench(r)
 	registerTPCCBench(r)
-	registerSQL20Bench(r)
+	registerTPCHBench(r)
 }

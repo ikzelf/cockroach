@@ -67,7 +67,7 @@ func (n *dropIndexNode) startExec(params runParams) error {
 		// the mutation list and new version number created by the first
 		// drop need to be visible to the second drop.
 		tableDesc, err := params.p.ResolveMutableTableDescriptor(
-			ctx, index.tn, true /*required*/, requireTableDesc)
+			ctx, index.tn, true /*required*/, ResolveRequireTableDesc)
 		if err != nil {
 			// Somehow the descriptor we had during newPlan() is not there
 			// any more.
@@ -78,7 +78,7 @@ func (n *dropIndexNode) startExec(params runParams) error {
 
 		if err := params.p.dropIndexByName(
 			ctx, index.tn, index.idxName, tableDesc, n.n.IfExists, n.n.DropBehavior, checkIdxConstraint,
-			tree.AsStringWithFlags(n.n, tree.FmtAlwaysQualifyTableNames),
+			tree.AsStringWithFQNames(n.n, params.Ann()),
 		); err != nil {
 			return err
 		}

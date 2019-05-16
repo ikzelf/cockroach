@@ -201,7 +201,7 @@ func createTestStoreWithoutStart(
 		cfg.AmbientCtx, &base.Config{Insecure: true}, cfg.Clock,
 		stopper, &cfg.Settings.Version)
 	server := rpc.NewServer(rpcContext) // never started
-	cfg.Gossip = gossip.NewTest(1, rpcContext, server, stopper, metric.NewRegistry())
+	cfg.Gossip = gossip.NewTest(1, rpcContext, server, stopper, metric.NewRegistry(), cfg.DefaultZoneConfig)
 	cfg.StorePool = NewTestStorePool(*cfg)
 	// Many tests using this test harness (as opposed to higher-level
 	// ones like multiTestContext or TestServer) want to micro-manage
@@ -227,7 +227,7 @@ func createTestStoreWithoutStart(
 		t.Fatal(err)
 	}
 	var splits []roachpb.RKey
-	kvs, tableSplits := sqlbase.MakeMetadataSchema().GetInitialValues()
+	kvs, tableSplits := sqlbase.MakeMetadataSchema(cfg.DefaultZoneConfig, cfg.DefaultSystemZoneConfig).GetInitialValues()
 	if opts.createSystemRanges {
 		splits = config.StaticSplits()
 		splits = append(splits, tableSplits...)
@@ -439,7 +439,7 @@ func TestStoreInitAndBootstrap(t *testing.T) {
 
 		// Bootstrap the system ranges.
 		var splits []roachpb.RKey
-		kvs, tableSplits := sqlbase.MakeMetadataSchema().GetInitialValues()
+		kvs, tableSplits := sqlbase.MakeMetadataSchema(cfg.DefaultZoneConfig, cfg.DefaultSystemZoneConfig).GetInitialValues()
 		splits = config.StaticSplits()
 		splits = append(splits, tableSplits...)
 		sort.Slice(splits, func(i, j int) bool {
@@ -1499,11 +1499,11 @@ func TestStoreSetRangesMaxBytes(t *testing.T) {
 		expMaxBytes int64
 	}{
 		{store.LookupReplica(roachpb.RKeyMin),
-			*config.DefaultZoneConfig().RangeMaxBytes},
+			*store.cfg.DefaultZoneConfig.RangeMaxBytes},
 		{splitTestRange(store, roachpb.RKeyMin, keys.MakeTablePrefix(baseID), t),
 			1 << 20},
 		{splitTestRange(store, keys.MakeTablePrefix(baseID), keys.MakeTablePrefix(baseID+1), t),
-			*config.DefaultZoneConfig().RangeMaxBytes},
+			*store.cfg.DefaultZoneConfig.RangeMaxBytes},
 		{splitTestRange(store, keys.MakeTablePrefix(baseID+1), keys.MakeTablePrefix(baseID+2), t),
 			2 << 20},
 	}
@@ -1791,13 +1791,14 @@ func TestStoreResolveWriteIntentPushOnRead(t *testing.T) {
 
 			// If the pushee is staging, update the transaction record.
 			if tc.pusheeStagingRecord {
-				// TODO(nvanbenschoten): Avoid writing directly to the engine once
-				// there's a way to create a STAGING transaction record.
-				txnKey := keys.TransactionKey(pushee.Key, pushee.ID)
-				txnRecord := pushee.AsRecord()
-				txnRecord.Status = roachpb.STAGING
-				if err := engine.MVCCPutProto(ctx, store.Engine(), nil, txnKey, hlc.Timestamp{}, nil, &txnRecord); err != nil {
-					t.Fatal(err)
+				et, etH := endTxnArgs(pushee, true)
+				et.InFlightWrites = []roachpb.SequencedWrite{{Key: []byte("keyA"), Sequence: 1}}
+				etReply, pErr := client.SendWrappedWith(ctx, store.TestSender(), etH, &et)
+				if pErr != nil {
+					t.Fatal(pErr)
+				}
+				if replyTxn := etReply.Header().Txn; replyTxn.Status != roachpb.STAGING {
+					t.Fatalf("expected STAGING txn, found %v", replyTxn)
 				}
 			}
 
@@ -1826,13 +1827,7 @@ func TestStoreResolveWriteIntentPushOnRead(t *testing.T) {
 			etArgs, etH := endTxnArgs(pushee, true)
 			assignSeqNumsForReqs(pushee, &etArgs)
 			_, pErr = client.SendWrappedWith(ctx, store.TestSender(), etH, &etArgs)
-			if tc.pusheeStagingRecord {
-				// TODO(nvanbenschoten): We don't support committing STAGING
-				// transaction records yet. This will need to change once we do.
-				if !testutils.IsPError(pErr, "TransactionStatusError: bad txn status") {
-					t.Fatal(pErr)
-				}
-			} else if tc.expPusheeRetry {
+			if tc.expPusheeRetry {
 				if _, ok := pErr.GetDetail().(*roachpb.TransactionRetryError); !ok {
 					t.Errorf("expected transaction retry error; got %s", pErr)
 				}

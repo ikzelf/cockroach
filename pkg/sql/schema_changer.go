@@ -763,7 +763,7 @@ func (sc *SchemaChanger) drainNames(ctx context.Context) error {
 		func(txn *client.Txn) error {
 			b := txn.NewBatch()
 			for _, drain := range namesToReclaim {
-				tbKey := tableKey{drain.ParentID, drain.Name}.Key()
+				tbKey := sqlbase.NewTableKey(drain.ParentID, drain.Name).Key()
 				b.Del(tbKey)
 			}
 
@@ -1674,7 +1674,7 @@ func (s *SchemaChangeManager) Start(stopper *stop.Stopper) {
 		if s.testingKnobs.AsyncExecQuickly {
 			delay = 20 * time.Millisecond
 		}
-		defTTL := config.DefaultZoneConfig().GC.TTLSeconds
+		defTTL := s.execCfg.DefaultZoneConfig.GC.TTLSeconds
 
 		execOneSchemaChange := func(schemaChangers map[sqlbase.ID]SchemaChanger) {
 			for tableID, sc := range schemaChangers {
